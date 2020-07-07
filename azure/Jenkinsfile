@@ -1,0 +1,35 @@
+import groovy.json.JsonSlurper
+
+node { 
+    stage("checkout") {
+        checkout scm
+        // git 'https://github.com/pvsone/opa-terraform.git'
+    }
+    stage('create plan') {
+        dir('azure') {
+            ansiColor('xterm') {
+                sh '''
+                terraform init
+                terraform plan --out tfplan.binary --refresh=false
+                terraform show -json tfplan.binary > tfplan.json
+                '''
+            }
+        }
+    }
+    stage('validate plan') {
+        dir('azure') {
+            result = sh (
+                script: 'curl localhost:8181/v0/data/rules/main -d @tfplan.json',
+                returnStdout: true
+            ).trim()
+
+            def json = new JsonSlurper().parseText(result)
+            if (json.allowed == false) {
+                for(def msg : json.errors) {
+                    echo "DENIED: " + msg
+                }
+                error 'Terraform plan is not valid'
+            }
+        }
+    }
+}
