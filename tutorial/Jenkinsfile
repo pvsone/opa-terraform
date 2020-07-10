@@ -1,0 +1,44 @@
+node { 
+    stage("init") {
+        checkout scm
+        // git 'https://github.com/pvsone/opa-terraform.git'
+        sh 'opa run -s tutorial/policy/terraform.rego &'
+    }
+    stage('terraform main') {
+        dir('tutorial/main') {
+            ansiColor('xterm') {
+                sh '''
+                terraform init
+                terraform plan --out tfplan.binary --refresh=false
+                terraform show -json tfplan.binary > tfplan.json
+                '''
+            }
+        }
+    }
+    stage('opa main') {
+        dir('tutorial') {
+            sh 'curl localhost:8181/v0/data/terraform/analysis/authz -d @main/tfplan.json'
+        }
+    }
+    stage('terraform large') {
+        dir('tutorial/large') {
+            ansiColor('xterm') {
+                sh '''
+                terraform init
+                terraform plan --out tfplan.binary --refresh=false
+                terraform show -json tfplan.binary > tfplan.json
+                '''
+            }
+        }
+    }
+    stage('opa large') {
+        dir('tutorial') {
+            AUTHZ = sh (
+                script: 'curl localhost:8181/v0/data/terraform/analysis/authz -d @large/tfplan.json',
+                returnStdout: true
+            ).trim()
+            
+            if (AUTHZ == "false") error 'Authorization failed'
+        }
+    }
+}

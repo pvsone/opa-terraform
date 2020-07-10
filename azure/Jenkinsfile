@@ -3,7 +3,8 @@ import groovy.json.JsonSlurper
 node { 
     stage("checkout") {
         checkout scm
-        // git 'https://github.com/pvsone/opa-terraform.git'
+        // TODO - Run OPA with Styra configuration
+        // sh 'opa run --server --config-file=opa-conf.yaml &'
     }
     stage('create plan') {
         dir('azure') {
@@ -18,6 +19,10 @@ node {
     }
     stage('validate plan') {
         dir('azure') {
+            // TODO - Verify that OPA is running and accepting requests
+            // sh 'curl localhost:8181/health?bundle=true'
+            // if not ready then wait, retry, loop up to N times
+
             result = sh (
                 script: 'curl localhost:8181/v0/data/rules/main -d @tfplan.json',
                 returnStdout: true
@@ -30,6 +35,8 @@ node {
                 }
                 error 'Terraform plan is not valid'
             }
+
+            // TODO - sleep a few seconds to ensure OPA decision logs are sent to DAS
         }
     }
 }
