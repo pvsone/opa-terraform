@@ -3,11 +3,9 @@ import groovy.json.JsonSlurper
 node { 
     stage("checkout") {
         checkout scm
-        // TODO - Run OPA with Styra configuration
-        // sh 'opa run --server --config-file=opa-conf.yaml &'
     }
-    stage('create plan') {
-        dir('azure') {
+    stage('create plan - good') {
+        dir('azure/good') {
             ansiColor('xterm') {
                 sh '''
                 terraform init
@@ -17,12 +15,8 @@ node {
             }
         }
     }
-    stage('validate plan') {
-        dir('azure') {
-            // TODO - Verify that OPA is running and accepting requests
-            // sh 'curl localhost:8181/health?bundle=true'
-            // if not ready then wait, retry, loop up to N times
-
+    stage('validate plan - good') {
+        dir('azure/good') {
             result = sh (
                 script: 'curl localhost:8181/v0/data/rules/main -d @tfplan.json',
                 returnStdout: true
@@ -35,8 +29,38 @@ node {
                 }
                 error 'Terraform plan is not valid'
             }
-
-            // TODO - sleep a few seconds to ensure OPA decision logs are sent to DAS
         }
+    }
+    stage('create plan - bad') {
+        dir('azure/bad') {
+            ansiColor('xterm') {
+                sh '''
+                terraform init
+                terraform plan --out tfplan.binary --refresh=false
+                terraform show -json tfplan.binary > tfplan.json
+                '''
+            }
+        }
+    }
+    stage('validate plan - bad') {
+        dir('azure/bad') {
+            result = sh (
+                script: 'curl localhost:8181/v0/data/rules/main -d @tfplan.json',
+                returnStdout: true
+            ).trim()
+
+            def json = new JsonSlurper().parseText(result)
+            if (json.allowed == false) {
+                for(def msg : json.errors) {
+                    echo "DENIED: " + msg
+                }
+                error 'Terraform plan is not valid'
+            }
+        }
+    }
+    stage('apply') {
+        // terraform apply tfplan.binary
+        // terraform show -json terraform.tfstate > terraform.tfstate.json
+        // patch (via curl) the DAS dataset with the state json content
     }
 }
